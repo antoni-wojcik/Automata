@@ -14,8 +14,6 @@
 #include <string>
 #include <fstream>
 #include <sstream>
-#include <cmath>
-#include <random>
 
 // include the OpenCL library (C++ binding)
 #define __CL_ENABLE_EXCEPTIONS
@@ -132,13 +130,13 @@ private:
             kernel.setArg(kernel_pos, image_GL);
         }
         
-        void transferImageToShader(Shader& shader, const char* shader_identifier) {
+        void transferImageToShader(Shader& shader, const char* shader_tex_id) {
             shader.use();
             
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, texture_ID);
             
-            glUniform1i(glGetUniformLocation(shader.ID, shader_identifier), 0);
+            glUniform1i(glGetUniformLocation(shader.ID, shader_tex_id), 0);
         }
     };
     
@@ -268,8 +266,8 @@ public:
         }
     }
     
-    void transferData(Shader& shader, const char* shader_identifier) {
-        image_out.transferImageToShader(shader, shader_identifier);
+    void transferData(Shader& shader, const char* shader_tex_id) {
+        image_out.transferImageToShader(shader, shader_tex_id);
     }
     
     void iterate() {
