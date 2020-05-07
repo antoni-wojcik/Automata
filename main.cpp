@@ -52,7 +52,7 @@ bool mac_fixed = false;
 float last_frame_time = 0.0f;
 float delta_time = 0.0f;
 float current_swap_time = 0.0f;
-const float swap_length = 0.05f;
+const float swap_length = 1.0f;
 
 // fps counter variables
 float fps_sum = 0.0f;
@@ -70,7 +70,7 @@ int main(int argc, const char * argv[]) {
     screen_ptr = &screen;
     
     KernelGL kernel("src/kernels/kernel_automata.ocl", "iterate");
-    kernel.createImagesGL("textures/test2.png");
+    kernel.createImagesGL("textures/test5.png", "processTexture");
     
     while(!glfwWindowShouldClose(window)) {
         float current_time = glfwGetTime();

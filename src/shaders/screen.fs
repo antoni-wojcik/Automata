@@ -3,7 +3,7 @@
 out vec4 fragColor;
 in vec2 fragPos;
 
-uniform sampler2D automata;
+uniform isampler2D automata;
 
 void main() {
     //float color = texture(automata, fragPos).r;

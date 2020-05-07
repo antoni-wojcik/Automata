@@ -1,5 +1,7 @@
 __constant sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
 
+#define COLOR_I_MAX 1
+
 kernel void iterate(__read_only image2d_t image_in, __write_only image2d_t image_out) {
 
     int x = get_global_id(0);
@@ -11,23 +13,39 @@ kernel void iterate(__read_only image2d_t image_in, __write_only image2d_t image
     int counter = 0;
     
     bool alive = false;
-    if(read_imagef(image_in, sampler, (int2)(x, y)).x > 0.0f) alive = true;
+    if(read_imagei(image_in, sampler, (int2)(x, y)).x == COLOR_I_MAX) alive = true;
     
-    for(int i = -1; i < 2; i++) for(int j = -1; j < 2; j++) {
+    for(int i = -2; i < 3; i++) for(int j = -2; j < 3; j++) {
         if(i == 0 && j == 0) continue;
         
-        float pixel_data = read_imagef(image_in, sampler, (int2)((x + i + width) % width, (y + j + height) % height)).x;
+        float pixel_data = read_imagei(image_in, sampler, (int2)((x + i + width) % width, (y + j + height) % height)).x;
         
-        if(pixel_data > 0.0f) counter++;
+        if(pixel_data == COLOR_I_MAX) counter++;
     }
     
-    float col = 0.0f;
+    float col = 0;
     
     if(alive) {
-        if(0 <= counter && counter <= 8) col = 1.0f;
+        if(2 <= counter && counter <= 3) col = 1;
     } else {
-        if(3 <= counter && counter <= 3) col = 1.0f;
+        if(3 <= counter && counter <= 4) col = 1;
     }
     
-    write_imagef(image_out, (int2)(x, y), (float4)(col, col, col, col));
+    write_imagei(image_out, (int2)(x, y), (int4)(col, col, col, col));
+}
+
+kernel void processTexture(__read_only image2d_t image_in, __write_only image2d_t image_out) {
+    int x = get_global_id(0);
+    int y = get_global_id(1);
+    
+    float4 pixel_data_f = read_imagef(image_in, sampler, (int2)(x, y));
+    
+    int4 pixel_data_i = (int4)(0, 0, 0, 0);
+    
+    if(pixel_data_f.x > 0.0f) pixel_data_i.x = COLOR_I_MAX;
+    if(pixel_data_f.y > 0.0f) pixel_data_i.y = COLOR_I_MAX;
+    if(pixel_data_f.z > 0.0f) pixel_data_i.z = COLOR_I_MAX;
+    if(pixel_data_f.w > 0.0f) pixel_data_i.w = COLOR_I_MAX;
+    
+    write_imagei(image_out, (int2)(x, y), pixel_data_i);
 }

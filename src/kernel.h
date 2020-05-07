@@ -39,11 +39,8 @@ private:
     class ImageGLObj {
     private:
         cl_GLuint texture_ID;
-        GLenum texture_format;
         
-        cl::ImageGL image_GL;
-        
-        void generateGLTexture(const unsigned char* texture_data = NULL) {
+        void generateGLTexture() {
             glGenTextures(1, &texture_ID);
             
             glBindTexture(GL_TEXTURE_2D, texture_ID);
@@ -55,13 +52,15 @@ private:
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); //USE NEAREST TO SPEED UP
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             
-            glTexImage2D(GL_TEXTURE_2D, 0, texture_format, width, height, 0, texture_format, GL_UNSIGNED_BYTE, texture_data);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8I, width, height, 0, GL_RGBA_INTEGER, GL_INT, NULL);
+            //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, NULL); // for float textures
             
             glFinish();
         }
         
         void generateGLTextureFromFile(const char* texture_path) {
             int channels_num;
+            GLenum texture_format;
             unsigned char* texture_data = stbi_load(texture_path, &width, &height, &channels_num, 4);
             
             if(texture_data) {
@@ -69,7 +68,20 @@ private:
                 else if(channels_num == 3) texture_format = GL_RGB;
                 else texture_format = GL_RGBA;
                 
-                generateGLTexture(texture_data);
+                glGenTextures(1, &texture_ID);
+                
+                glBindTexture(GL_TEXTURE_2D, texture_ID);
+                
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); //GL_CLAMP_TO_EDGE or GL_REPEAT
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); //USE NEAREST TO SPEED UP
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                
+                glTexImage2D(GL_TEXTURE_2D, 0, texture_format, width, height, 0, texture_format, GL_UNSIGNED_BYTE, texture_data);
+                
+                glFinish();
 
                 stbi_image_free(texture_data);
             } else {
@@ -83,18 +95,47 @@ private:
         
     public:
     int width, height;
+    
+    cl::ImageGL image_GL;
         
         ImageGLObj() {}
         
-        ImageGLObj(const char* texture_path, cl::Context context) {
+        ImageGLObj(const char* texture_path, const char* kernel_name, cl::Device& device, cl::Context& context, cl::Program& program) {
             generateGLTextureFromFile(texture_path);
-            image_GL = cl::ImageGL(context, CL_MEM_READ_WRITE, GL_TEXTURE_2D, 0, texture_ID);
+            cl_GLuint texture_file_ID = texture_ID;
+            generateGLTexture();
+            
+            try {
+                cl::ImageGL textureImage(context, CL_MEM_READ_ONLY, GL_TEXTURE_2D, 0, texture_file_ID);
+                image_GL = cl::ImageGL(context, CL_MEM_READ_WRITE, GL_TEXTURE_2D, 0, texture_ID);
+                
+                // create the kernel to process the initial texture
+                
+                cl::Kernel processing_kernel(program, kernel_name);
+                
+                // set the arguments
+                
+                processing_kernel.setArg(0, textureImage);
+                processing_kernel.setArg(1, image_GL);
+                
+                // process the initial texture
+                
+                cl::CommandQueue queue(context, device);
+                queue.enqueueNDRangeKernel(processing_kernel, cl::NullRange, cl::NDRange(size_t(width), size_t(height)), cl::NullRange);
+                queue.finish();
+            } catch(cl::Error e) {
+                processError(e, device, program);
+            }
+            
+            // free texture memory
+                                     
+            glDeleteTextures(1, &texture_file_ID);
+            
         }
         
-        ImageGLObj(ImageGLObj image, cl::Context context) {
+        ImageGLObj(ImageGLObj& image, cl::Context& context) {
             width = image.width;
             height = image.height;
-            texture_format = image.texture_format;
             generateGLTexture();
             image_GL = cl::ImageGL(context, CL_MEM_READ_WRITE, GL_TEXTURE_2D, 0, texture_ID);
         }
@@ -125,7 +166,7 @@ private:
     int current_image_in, current_image_out;
     
     
-    void processError(cl::Error e) {
+    static void processError(cl::Error& e, cl::Device& device, cl::Program& program) {
         std::cerr << "ERROR: OpenCL: OTHER: " << e.what() << ": " << e.err() << std::endl;
         if(e.err() == CL_BUILD_PROGRAM_FAILURE) {
             std::cerr << "ERROR: OpenCL: CANNOT BUILD PROGRAM: " << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device) << std::endl;
@@ -214,8 +255,10 @@ private:
             image[current_image_in].setKernelArg(kernel, 0);
             image[current_image_out].setKernelArg(kernel, 1);
         } catch(cl::Error e) {
-            processError(e);
+            processError(e, device, program);
         }
+        
+        glFinish();
     }
     
     void swapImages() {
@@ -230,15 +273,15 @@ public:
             buildProgram(kernel_path);
             createKernel(kernel_name);
         } catch(cl::Error e) {
-            processError(e);
+            processError(e, device, program);
         }
     }
     
-    void createImagesGL(const char* texture_path) {
+    void createImagesGL(const char* texture_path, const char* kernel_name) {
         
         // create two images and swap them with each iteration
         
-        image[0] = ImageGLObj(texture_path, context);
+        image[0] = ImageGLObj(texture_path, kernel_name, device, context, program);
         image[1] = ImageGLObj(image[0], context);
         
         width = image[0].width;
@@ -254,16 +297,25 @@ public:
     
     void iterate() {
         swapImages();
-        setKernelArgs();
         
         try {
             // create a command queue and enqueue the kernel to process the current input image
+            glFinish();
+            
+            std::vector<cl::Memory> mem_objs;
+            
+            mem_objs.push_back(image[0].image_GL);
+            mem_objs.push_back(image[1].image_GL);
+            
+            setKernelArgs();
             
             cl::CommandQueue queue(context, device);
+            queue.enqueueAcquireGLObjects(&mem_objs);
             queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(size_t(width), size_t(height)), cl::NullRange);
+            queue.enqueueReleaseGLObjects(&mem_objs);
             queue.finish();
         } catch(cl::Error e) {
-            processError(e);
+            processError(e, device, program);
         }
     }
 };

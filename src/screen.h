@@ -73,6 +73,7 @@ public:
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         
         glBindVertexArray(0);
+        glFinish();
     }
     
     void takeScreenshot(short width, short height, const std::string& name = "screenshot", bool show_image = false) {
