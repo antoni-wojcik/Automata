@@ -56,7 +56,7 @@ unsigned int scr_height = SCR_HEIGHT;
 float last_frame_time = 0.0f;
 float delta_time = 0.0f;
 float current_swap_time = 0.0f;
-float iteration_length = 0.01f;
+float iteration_length = 0.1f;
 bool stopping = false;
 bool run = true;
 
@@ -81,13 +81,13 @@ Camera* camera_ptr;
 int main(int argc, const char * argv[]) {
     GLFWwindow* window = initialiseOpenGL();
     
-    Screen screen("src/shaders/screen.vs", "src/shaders/screen.fs");
+    Screen screen(scr_width, scr_height, "src/shaders/screen/screen.vs", "src/shaders/screen/screen.fs", "src/shaders/automata/automata.vs", "src/shaders/automata/automata.fs");
     screen_ptr = &screen;
     
     KernelGL kernel("src/kernels/kernel_automata.ocl", "iterate");
     kernel.createImagesGL("textures/die.png", "processTexture");
     
-    Camera camera(scr_width, scr_height);
+    Camera camera(scr_width, scr_height, kernel.width, kernel.height);
     camera_ptr = &camera;
     
     while(!glfwWindowShouldClose(window)) {
@@ -98,9 +98,9 @@ int main(int argc, const char * argv[]) {
         
         processInput(window);
         
-        camera.transferData(screen.shader, "pos_x", "pos_y", "width", "height");
+        camera.transferData(screen.automata_shader, "pos_x", "pos_y", "width_inv", "height_inv");
         
-        kernel.transferData(screen.shader, "automata");
+        kernel.transferData(screen.automata_shader, "automata");
         screen.draw();
         
         glFinish();
@@ -123,6 +123,7 @@ void framebufferSizeCallback(GLFWwindow* window, int width, int height) {
     scr_width = width;
     scr_height = height;
     
+    screen_ptr->resize(width, height);
     camera_ptr->resize(width, height);
 }
 
@@ -140,7 +141,7 @@ void processInput(GLFWwindow* window) {
     }
     
     if(glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS) {
-        if(!taking_screenshot) screen_ptr->takeScreenshot(scr_width, scr_height);
+        if(!taking_screenshot) screen_ptr->takeScreenshot();
         taking_screenshot = true;
     } else if(glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_RELEASE) {
         taking_screenshot = false;

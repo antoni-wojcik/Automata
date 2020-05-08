@@ -15,7 +15,34 @@
 
 class Screen {
 private:
-    unsigned int VBO, VAO, EBO;
+    unsigned int scr_width, scr_height;
+    short width, height;
+    
+    unsigned int screen_texture;
+    GLuint screen_texture_loc;
+    
+    Shader screen_shader;
+    
+    unsigned int VBO, VAO, EBO, FBO;
+    
+    
+    void createFramebuffer() {
+        glGenFramebuffers(1, &FBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, FBO);
+        
+        glGenTextures(1, &screen_texture);
+        glBindTexture(GL_TEXTURE_2D, screen_texture);
+        
+        screen_shader.use();
+        screen_texture_loc = glGetUniformLocation(screen_shader.ID, "screen_texture");
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, screen_texture, 0);
+        
+        if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) std::cout << "ERROR: OpenGL: Failed to create framebuffer" << std::endl;
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
     
     void createScreen() {
         float vertices[12] = {
@@ -47,37 +74,71 @@ private:
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
     }
+    
+    inline void bind() {
+        glBindFramebuffer(GL_FRAMEBUFFER, FBO);
+        glViewport(0, 0, width, height);
+    }
+    
+    inline void unbind() {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, scr_width, scr_height);
+    }
 
 public:
-    Shader shader;
+    Shader automata_shader;
     
-    Screen(const char* screen_vertex_path, const char* screen_fragment_path) : shader(screen_vertex_path, screen_fragment_path) {
+    Screen(unsigned int scr_width_u, unsigned int scr_height_u, const char* screen_vertex_path, const char* screen_fragment_path, const char* automata_vertex_path, const char* automata_fragment_path) : screen_shader(screen_vertex_path, screen_fragment_path), automata_shader(automata_vertex_path, automata_fragment_path) {
+        scr_width = scr_width_u;
+        scr_height = scr_height_u;
+        width = (scr_width_u+1)/2;
+        height = (scr_height_u+1)/2;
+        
         createScreen();
+        createFramebuffer();
     }
     
     ~Screen() {
         glDeleteVertexArrays(1, &VAO);
         glDeleteBuffers(1, &VBO);
         glDeleteBuffers(1, &EBO);
-    }
-    
-    void clear() {
-        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glDeleteFramebuffers(1, &FBO);
     }
     
     void draw() {
-        shader.use();
+        bind();
+        automata_shader.use();
+        
+        glBindVertexArray(VAO);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        
+        unbind();
+        screen_shader.use();
+        
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, screen_texture);
+        glUniform1i(screen_texture_loc, 0);
         
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         
         glBindVertexArray(0);
-        glFinish();
     }
     
-    void takeScreenshot(short width, short height, const std::string& name = "screenshot", bool show_image = false) {
-        std::cout << "Taking screenshot: " << name << ".tga" << std::endl;
+    void resize(unsigned int scr_width_u, unsigned int scr_height_u) {
+        scr_width = scr_width_u;
+        scr_height = scr_height_u;
+        width = (scr_width_u+1)/2;
+        height = (scr_height_u+1)/2;
+        
+        glDeleteFramebuffers(1, &FBO);
+        glDeleteTextures(1, &screen_texture);
+        
+        createFramebuffer();
+    }
+    
+    void takeScreenshot(const std::string& name = "screenshot", bool show_image = false) {
+        std::cout << "Taking screenshot: " << name << ".tga " << ", dimensions: " << width << ", " << height << std::endl;
         short TGA_header[] = {0, 2, 0, 0, 0, 0, width, height, 24};
         char* pixel_data = new char[3 * width * height]; //there are 3 colors (RGB) for each pixel
         std::ofstream file("screenshots/" + name + ".tga", std::ios::out | std::ios::binary);
@@ -86,8 +147,11 @@ public:
             exit(-1);
         }
         
+        bind();
         glReadBuffer(GL_FRONT);
         glReadPixels(0, 0, width, height, GL_BGR, GL_UNSIGNED_BYTE, pixel_data);
+        unbind();
+        glFinish();
         
         file.write((char*)TGA_header, 9 * sizeof(short));
         file.write(pixel_data, 3 * width * height);

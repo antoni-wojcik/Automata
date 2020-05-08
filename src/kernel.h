@@ -145,8 +145,6 @@ private:
     cl::Program program;
     cl::Kernel kernel;
     
-    int width, height;
-    
     cl::Image2D image_in;
     ImageGLObj image_out;
     
@@ -242,6 +240,8 @@ private:
     }
     
 public:
+    int width, height;
+    
     KernelGL(const char* kernel_path, const char* kernel_name) {
         try {
             buildProgram(kernel_path);

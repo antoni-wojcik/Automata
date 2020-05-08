@@ -9,81 +9,90 @@
 #ifndef camera_h
 #define camera_h
 
-#include "camera.h"
+#include "shader.h"
 
+#define ZOOM_MIN 1.0f
 #define ZOOM_MAX 0.05f
-#define MOVE_SPEED 1.0f
+#define MOVE_SPEED 0.002f
 #define ZOOM_SPEED 0.1f
 
 class Camera {
 private:
-    float scr_width, scr_height;
+    float tex_width_n, tex_height_n; // normalized texture coords
+    float tex_aspect;
+    
+    float scr_width, scr_height, scr_max;
     float width, height;
     float pos_x, pos_y;
     float zoom_current;
     
     void reposition() {
-        if(pos_x < 0.0f) pos_x += scr_width;
-        else if(pos_x > scr_width) pos_x -= scr_width;
+        if(pos_x < -scr_width * 0.5f) pos_x += scr_width;
+        else if(pos_x > scr_width * 0.5f) pos_x -= scr_width;
         
-        if(pos_y < 0.0f) pos_y += scr_width;
-        else if(pos_y > scr_width) pos_y -= scr_width;
+        if(pos_y < -scr_height * 0.5f) pos_y += scr_height;
+        else if(pos_y > scr_height * 0.5f) pos_y -= scr_height;
+    }
+    
+    void setTextureSize() {
+        if((scr_height / scr_width) >= tex_aspect) {
+            tex_width_n = 1.0f;
+            tex_height_n = scr_width / scr_height * tex_aspect;
+        } else {
+            tex_width_n = scr_height / (scr_width * tex_aspect);
+            tex_height_n = 1.0f;
+        }
     }
 
 public:
-    Camera(unsigned int scr_width_n, unsigned int scr_height_n) {
-        resize(scr_width_n, scr_height_n);
+    Camera(unsigned int scr_width_u, unsigned int scr_height_u, int tex_width_u, int tex_height_u) {
+        tex_aspect = (float)tex_height_u / (float)tex_width_u;
+        
+        resize(scr_width_u, scr_height_u);
         
         pos_x = 0.0f;
         pos_y = 0.0f;
     }
     
     void zoom(float offset) {
-        zoom_current -= offset * ZOOM_SPEED;
+        zoom_current *= exp(-offset * ZOOM_SPEED);
         
-        if(zoom_current > 1.0f) zoom_current = 1.0f;
+        if(zoom_current > ZOOM_MIN) zoom_current = ZOOM_MIN;
         else if(zoom_current < ZOOM_MAX) zoom_current = ZOOM_MAX;
-        
-        
-        float width_old = width;
-        float height_old = height;
         
         width = scr_width * zoom_current;
         height = scr_height * zoom_current;
         
-        float width_diff = width_old - width;
-        float height_diff = height_old - height;
-        
-        pos_x += width_diff * 0.5f;
-        pos_y += height_diff * 0.5f;
-        
-        
-        reposition();
+        //reposition();
     }
     
     void move(float offset_x, float offset_y) {
-        pos_x += offset_x * zoom_current * MOVE_SPEED;
-        pos_y += offset_y * zoom_current * MOVE_SPEED;
+        pos_x += offset_x * zoom_current * scr_max * MOVE_SPEED;
+        pos_y += offset_y * zoom_current * scr_max * MOVE_SPEED;
         
-        reposition();
+        //reposition();
     }
     
-    void resize(unsigned int scr_width_n, unsigned int scr_height_n) {
-        scr_width = (float)(scr_width_n) * 0.5f;
-        scr_height = (float)(scr_height_n) * 0.5f;
+    void resize(unsigned int scr_width_u, unsigned int scr_height_u) {
+        scr_width = (float)(scr_width_u) * 0.5f;
+        scr_height = (float)(scr_height_u) * 0.5f;
+        
+        scr_max = (scr_width >= scr_height) ? scr_width : scr_height;
         
         width = scr_width;
         height = scr_height;
         zoom_current = 1.0f;
+        
+        setTextureSize();
     }
     
-    void transferData(Shader& shader, const std::string pos_x_id, const std::string pos_y_id, const std::string scr_width_id, const std::string scr_height_id) const {
+    void transferData(Shader& shader, const std::string& pos_x_id, const std::string& pos_y_id, const std::string& width_id, const std::string& height_id) const {
         shader.use();
         
-        shader.setFloat(pos_x_id, pos_x/scr_width);
-        shader.setFloat(pos_y_id, pos_y/scr_width);
-        shader.setFloat(scr_width_id, width/scr_width);
-        shader.setFloat(scr_height_id, height/scr_height);
+        shader.setFloat(pos_x_id, pos_x / scr_max);
+        shader.setFloat(pos_y_id, pos_y / scr_max);
+        shader.setFloat(width_id, zoom_current / tex_width_n);
+        shader.setFloat(height_id, zoom_current / tex_height_n);
     }
 };
 
