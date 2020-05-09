@@ -12,7 +12,7 @@
 #include "shader.h"
 
 #define ZOOM_MIN 1.0f
-#define ZOOM_MAX 0.05f
+#define ZOOM_MAX 0.01f
 #define MOVE_SPEED 0.002f
 #define ZOOM_SPEED 0.1f
 

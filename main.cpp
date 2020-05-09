@@ -85,7 +85,7 @@ int main(int argc, const char * argv[]) {
     screen_ptr = &screen;
     
     KernelGL kernel("src/kernels/kernel_automata.ocl", "iterate");
-    kernel.createImagesGL("textures/die.png", "processTexture");
+    kernel.createImagesGL("textures/die4.png", "processTexture");
     
     Camera camera(scr_width, scr_height, kernel.width, kernel.height);
     camera_ptr = &camera;
